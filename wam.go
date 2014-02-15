@@ -15,19 +15,25 @@
 package main
 
 import (
+	"fmt"
 	"log"
 	"regexp"
+	"strings"
 	"time"
 
 	rss "github.com/haarts/go-pkg-rss"
 	"github.com/huichen/gobo"
 )
 
-const TIME_OUT = 30
+const (
+	TIME_OUT       = 30
+	FETCH_INTERVAL = 15
+)
 
 var (
-	Archived = map[string]bool{}
-	WaitList = []string{"#golang #自动化管理微博测试，目前还处于阳春阶段 http://golang.org"}
+	Archived        = map[string]bool{}
+	ArchivedMetions = make([]string, 0, 10)
+	WaitList        = []string{"#golang #自动化管理微博测试，目前还处于阳春阶段 http://golang.org"}
 
 	weibo       = gobo.Weibo{}
 	AccessToken = "2.00Mpr_VDkZyzfB64ba8a1c1bPLPVmC"
@@ -35,10 +41,12 @@ var (
 )
 
 func main() {
-	go PollFeed("http://blog.golang.org/feed.atom", itemHandlerGoBlog)
-	go PollFeed("http://blog.gopheracademy.com/feed.atom", itemHandlerGaBlog)
-	go PollFeed("https://news.ycombinator.com/rss", itemHandlerHackerNews)
-	PollFeed("http://www.reddit.com/r/golang.rss", itemHandlerReddit)
+	// go PollFeed("http://blog.golang.org/feed.atom", itemHandlerGoBlog)
+	// go PollFeed("http://blog.gopheracademy.com/feed.atom", itemHandlerGaBlog)
+	// go PollFeed("http://blog.go-china.org/feed.atom", itemHandlerGcBlog)
+	// go PollFeed("https://news.ycombinator.com/rss", itemHandlerHackerNews)
+	// go PollFeed("http://www.reddit.com/r/golang.rss", itemHandlerReddit)
+	FetchMentions()
 }
 
 func PollFeed(uri string, itemHandler rss.ItemHandler) {
@@ -99,6 +107,23 @@ func itemHandlerGaBlog(feed *rss.Feed, ch *rss.Channel, newItems []*rss.Item) {
 	}
 }
 
+func itemHandlerGcBlog(feed *rss.Feed, ch *rss.Channel, newItems []*rss.Item) {
+	f := func(item *rss.Item) {
+		short_title := item.Title
+		if len(short_title) > 100 {
+			short_title = short_title[:99] + "…"
+		}
+		log.Println(short_title + " " + item.Links[0].Href)
+		PostWeibo(short_title + " " + item.Links[0].Href)
+	}
+
+	if _, ok := Archived["gc"]; !ok {
+		Archived["gc"] = false
+	} else {
+		genericItemHandler(feed, ch, newItems, f)
+	}
+}
+
 func itemHandlerHackerNews(feed *rss.Feed, ch *rss.Channel, newItems []*rss.Item) {
 	f := func(item *rss.Item) {
 		if match, _ := regexp.MatchString(`\w Go( |$|\.)`, item.Title); match {
@@ -140,12 +165,54 @@ func itemHandlerReddit(feed *rss.Feed, ch *rss.Channel, newItems []*rss.Item) {
 }
 
 func PostWeibo(content string) {
-	var statuses gobo.Statuses
 	params := gobo.Params{"source": AppKey, "status": "#golang# " + content}
-	if err := weibo.Call("statuses/update", "post", AccessToken, params, &statuses); err != nil {
+	if err := weibo.Call("statuses/update", "post", AccessToken, params, nil); err != nil {
 		log.Printf("[ERROR] PostWeibo: %s\n", err)
 	}
-	for _, status := range statuses.Statuses {
-		log.Println(status.Text)
+}
+
+func isMehtionExist(id string) bool {
+	for _, str := range ArchivedMetions {
+		if str == id {
+			return true
+		}
+	}
+	ArchivedMetions = append(ArchivedMetions, id)
+	return false
+}
+
+func RepostWeibo(id int64) {
+	params := gobo.Params{"id": id}
+	if err := weibo.Call("statuses/repost", "post", AccessToken, params, nil); err != nil {
+		log.Printf("[ERROR] Repost: %s\n", err)
+	}
+}
+
+func FetchMentions() {
+	for {
+		log.Println("Fetching mention list...")
+		// Fetch list of mentions.
+		var statuses gobo.Statuses
+		if err := weibo.Call("statuses/mentions", "get", AccessToken, nil, &statuses); err != nil {
+			log.Printf("[ERROR] FetchMentions: %s\n", err)
+		}
+
+		// Filter original mentions.
+		for _, status := range statuses.Statuses {
+			if status.Retweeted_Status == nil &&
+				strings.Contains(status.Text, "#golang#") {
+				if _, ok := Archived["mention"]; !ok {
+					continue
+				} else if isMehtionExist(fmt.Sprint(status.Id)) {
+					continue
+				}
+				log.Printf("Mention: %s\n", status.Text)
+				RepostWeibo(status.Id)
+			}
+		}
+		Archived["mention"] = false
+
+		log.Println("Waiting for new mention...")
+		time.Sleep(FETCH_INTERVAL * time.Minute)
 	}
 }
