@@ -41,11 +41,11 @@ var (
 )
 
 func main() {
-	// go PollFeed("http://blog.golang.org/feed.atom", itemHandlerGoBlog)
-	// go PollFeed("http://blog.gopheracademy.com/feed.atom", itemHandlerGaBlog)
-	// go PollFeed("http://blog.go-china.org/feed.atom", itemHandlerGcBlog)
-	// go PollFeed("https://news.ycombinator.com/rss", itemHandlerHackerNews)
-	// go PollFeed("http://www.reddit.com/r/golang.rss", itemHandlerReddit)
+	go PollFeed("http://blog.golang.org/feed.atom", itemHandlerGoBlog)
+	go PollFeed("http://blog.gopheracademy.com/feed.atom", itemHandlerGaBlog)
+	go PollFeed("http://blog.go-china.org/feed.atom", itemHandlerGcBlog)
+	go PollFeed("https://news.ycombinator.com/rss", itemHandlerHackerNews)
+	go PollFeed("http://www.reddit.com/r/golang.rss", itemHandlerReddit)
 	FetchMentions()
 }
 
