@@ -9,7 +9,7 @@ wam(Weibo Automated Management) - [Golang中国微博](http://weibo.com/u/321120
 
 ## 功能特性
 
-- 抓取 [HackerNews](http://news.ycombinator.com/)、[Reddit](http://www.reddit.com/r/golang)、[Gopher Academy Blog](http://blog.gopheracademy.com/) 和 [Go 官方博客](http://blog.golang.org/) 上有关 Go 语言的新闻更新。
+- 抓取 [HackerNews](http://news.ycombinator.com/)、[Reddit](http://www.reddit.com/r/golang)、[Gopher Academy Blog](http://blog.gopheracademy.com/)、[Go 官方博客](http://blog.golang.org/) 和 [Golang中国博客](http://blog.go-china.org)上有关 Go 语言的新闻更新。
 - 接受来自用户的 @ 转发诉求，转发内容中必须包含 **#golang#** 标签且为原创微博，否则无视。
 - 定时发布抓取到的新闻或转发诉求（未授权应用每天限量 50 条）。
 
