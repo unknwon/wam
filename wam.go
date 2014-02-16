@@ -15,8 +15,10 @@
 package main
 
 import (
+	"encoding/json"
 	"fmt"
 	"log"
+	"os"
 	"regexp"
 	"strings"
 	"time"
@@ -26,18 +28,48 @@ import (
 )
 
 const (
-	TIME_OUT       = 30
-	FETCH_INTERVAL = 15
+	TIME_OUT         = 30
+	FETCH_INTERVAL   = 15
+	PROCESS_INTERVAL = 5
 )
+
+type config struct {
+	TimeOut         int    `json:"time_out"`
+	FetchInterval   int    `json:"fetch_interval"`
+	ProcessInterval int    `json:"process_interval"`
+	AccessToken     string `json:"access_token"`
+	AppKey          string `json:"app_key"`
+}
+
+var Cfg config
+
+func init() {
+	f, err := os.Open("conf.json")
+	if err != nil {
+		log.Fatalf("[ERROR] Fail to open config file: %s", err)
+	}
+
+	if err = json.NewDecoder(f).Decode(&Cfg); err != nil {
+		log.Fatalf("[ERROR] Fail to decode config file: %s", err)
+	}
+
+	if Cfg.TimeOut == 0 {
+		Cfg.TimeOut = TIME_OUT
+	}
+	if Cfg.FetchInterval == 0 {
+		Cfg.FetchInterval = FETCH_INTERVAL
+	}
+	if Cfg.ProcessInterval == 0 {
+		Cfg.ProcessInterval = PROCESS_INTERVAL
+	}
+}
 
 var (
 	Archived        = map[string]bool{}
 	ArchivedMetions = make([]string, 0, 10)
-	WaitList        = []string{"#golang #自动化管理微博测试，目前还处于阳春阶段 http://golang.org"}
+	MsgQueue        = make([]interface{}, 0, 10)
 
-	weibo       = gobo.Weibo{}
-	AccessToken = "2.00Mpr_VDkZyzfB64ba8a1c1bPLPVmC"
-	AppKey      = "1536733472"
+	weibo = gobo.Weibo{}
 )
 
 func main() {
@@ -46,11 +78,12 @@ func main() {
 	go PollFeed("http://blog.go-china.org/feed.atom", itemHandlerGcBlog)
 	go PollFeed("https://news.ycombinator.com/rss", itemHandlerHackerNews)
 	go PollFeed("http://www.reddit.com/r/golang.rss", itemHandlerReddit)
-	FetchMentions()
+	go FetchMentions()
+	ProcessMsgQueue()
 }
 
 func PollFeed(uri string, itemHandler rss.ItemHandler) {
-	feed := rss.New(TIME_OUT, true, chanHandler, itemHandler)
+	feed := rss.New(Cfg.TimeOut, true, chanHandler, itemHandler)
 	for {
 		log.Println("Fetching from", uri, "...")
 		if err := feed.Fetch(uri, nil); err != nil {
@@ -80,7 +113,7 @@ func itemHandlerGoBlog(feed *rss.Feed, ch *rss.Channel, newItems []*rss.Item) {
 			short_title = short_title[:99] + "…"
 		}
 		log.Println(short_title + " " + item.Links[0].Href)
-		PostWeibo(short_title + " " + item.Links[0].Href)
+		MsgQueue = append(MsgQueue, short_title+" "+item.Links[0].Href)
 	}
 
 	if _, ok := Archived["go"]; !ok {
@@ -97,7 +130,7 @@ func itemHandlerGaBlog(feed *rss.Feed, ch *rss.Channel, newItems []*rss.Item) {
 			short_title = short_title[:99] + "…"
 		}
 		log.Println(short_title + " " + item.Links[0].Href)
-		PostWeibo(short_title + " " + item.Links[0].Href)
+		MsgQueue = append(MsgQueue, short_title+" "+item.Links[0].Href)
 	}
 
 	if _, ok := Archived["ga"]; !ok {
@@ -114,7 +147,7 @@ func itemHandlerGcBlog(feed *rss.Feed, ch *rss.Channel, newItems []*rss.Item) {
 			short_title = short_title[:99] + "…"
 		}
 		log.Println(short_title + " " + item.Links[0].Href)
-		PostWeibo(short_title + " " + item.Links[0].Href)
+		MsgQueue = append(MsgQueue, short_title+" "+item.Links[0].Href)
 	}
 
 	if _, ok := Archived["gc"]; !ok {
@@ -132,7 +165,7 @@ func itemHandlerHackerNews(feed *rss.Feed, ch *rss.Channel, newItems []*rss.Item
 				short_title = short_title[:99] + "…"
 			}
 			log.Println(short_title + " " + item.Links[0].Href)
-			PostWeibo(short_title + " " + item.Links[0].Href)
+			MsgQueue = append(MsgQueue, short_title+" "+item.Links[0].Href)
 		}
 	}
 
@@ -153,7 +186,7 @@ func itemHandlerReddit(feed *rss.Feed, ch *rss.Channel, newItems []*rss.Item) {
 				short_title = short_title[:99] + "…"
 			}
 			log.Println(short_title + " " + item.Links[0].Href)
-			PostWeibo(short_title + " " + item.Links[0].Href)
+			MsgQueue = append(MsgQueue, short_title+" "+item.Links[0].Href)
 		}
 	}
 
@@ -165,8 +198,8 @@ func itemHandlerReddit(feed *rss.Feed, ch *rss.Channel, newItems []*rss.Item) {
 }
 
 func PostWeibo(content string) {
-	params := gobo.Params{"source": AppKey, "status": "#golang# " + content}
-	if err := weibo.Call("statuses/update", "post", AccessToken, params, nil); err != nil {
+	params := gobo.Params{"source": Cfg.AppKey, "status": "#golang# " + content}
+	if err := weibo.Call("statuses/update", "post", Cfg.AccessToken, params, nil); err != nil {
 		log.Printf("[ERROR] PostWeibo: %s\n", err)
 	}
 }
@@ -183,7 +216,7 @@ func isMehtionExist(id string) bool {
 
 func RepostWeibo(id int64) {
 	params := gobo.Params{"id": id}
-	if err := weibo.Call("statuses/repost", "post", AccessToken, params, nil); err != nil {
+	if err := weibo.Call("statuses/repost", "post", Cfg.AccessToken, params, nil); err != nil {
 		log.Printf("[ERROR] Repost: %s\n", err)
 	}
 }
@@ -193,7 +226,7 @@ func FetchMentions() {
 		log.Println("Fetching mention list...")
 		// Fetch list of mentions.
 		var statuses gobo.Statuses
-		if err := weibo.Call("statuses/mentions", "get", AccessToken, nil, &statuses); err != nil {
+		if err := weibo.Call("statuses/mentions", "get", Cfg.AccessToken, nil, &statuses); err != nil {
 			log.Printf("[ERROR] FetchMentions: %s\n", err)
 		}
 
@@ -207,12 +240,31 @@ func FetchMentions() {
 					continue
 				}
 				log.Printf("Mention: %s\n", status.Text)
-				RepostWeibo(status.Id)
+				MsgQueue = append(MsgQueue, status.Id)
 			}
 		}
 		Archived["mention"] = false
 
 		log.Println("Waiting for new mention...")
-		time.Sleep(FETCH_INTERVAL * time.Minute)
+		time.Sleep(time.Duration(Cfg.FetchInterval) * time.Minute)
+	}
+}
+
+func ProcessMsgQueue() {
+	for {
+		log.Println("Processing the request...")
+		if len(MsgQueue) > 0 {
+			switch MsgQueue[0].(type) {
+			case string:
+				content := MsgQueue[0].(string)
+				PostWeibo(content)
+			case int64:
+				id := MsgQueue[0].(int64)
+				RepostWeibo(id)
+			}
+			MsgQueue = MsgQueue[1:]
+		}
+		log.Printf("Waiting for process next request... %d left\n", len(MsgQueue))
+		time.Sleep(time.Duration(Cfg.ProcessInterval) * time.Minute)
 	}
 }
