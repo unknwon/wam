@@ -234,9 +234,9 @@ func FetchMentions() {
 		for _, status := range statuses.Statuses {
 			if status.Retweeted_Status == nil &&
 				strings.Contains(status.Text, "#golang#") {
-				if _, ok := Archived["mention"]; !ok {
+				if isMehtionExist(fmt.Sprint(status.Id)) {
 					continue
-				} else if isMehtionExist(fmt.Sprint(status.Id)) {
+				} else if _, ok := Archived["mention"]; !ok {
 					continue
 				}
 				log.Printf("Mention: %s\n", status.Text)
