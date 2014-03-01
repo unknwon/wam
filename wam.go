@@ -252,8 +252,8 @@ func FetchMentions() {
 
 func ProcessMsgQueue() {
 	for {
-		log.Println("Processing the request...")
 		if len(MsgQueue) > 0 {
+			log.Printf("Processing the request... %d left\n", len(MsgQueue))
 			switch MsgQueue[0].(type) {
 			case string:
 				content := MsgQueue[0].(string)
@@ -264,7 +264,6 @@ func ProcessMsgQueue() {
 			}
 			MsgQueue = MsgQueue[1:]
 		}
-		log.Printf("Waiting for process next request... %d left\n", len(MsgQueue))
 		time.Sleep(time.Duration(Cfg.ProcessInterval) * time.Minute)
 	}
 }
