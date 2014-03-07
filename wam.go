@@ -20,6 +20,7 @@ import (
 	"log"
 	"os"
 	"regexp"
+	"runtime"
 	"strings"
 	"time"
 
@@ -62,6 +63,8 @@ func init() {
 	if Cfg.ProcessInterval == 0 {
 		Cfg.ProcessInterval = PROCESS_INTERVAL
 	}
+
+	runtime.GOMAXPROCS(runtime.NumCPU())
 }
 
 var (
